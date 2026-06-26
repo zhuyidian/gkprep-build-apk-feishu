@@ -1,0 +1,4 @@
+interface:
+  display_name: "GKPrep Build APK"
+  short_description: "Build the GKPrep APK from this repo"
+  default_prompt: "Build or package the GKPrep Android APK in this repository."

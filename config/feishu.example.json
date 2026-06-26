@@ -1,0 +1,7 @@
+{
+  "app_id": "cli_xxx",
+  "app_secret": "replace-with-app-secret",
+  "default_chat_id": "oc_xxx",
+  "default_folder_token": "fldxxx",
+  "mode": "drive-link"
+}
