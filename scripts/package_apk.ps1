@@ -1,4 +1,6 @@
 param(
+    [ValidateSet("auto", "GKPrep", "WrapperApp")]
+    [string]$App = "auto",
     [ValidateSet("y41air", "y41")]
     [string]$Platform = "y41air",
     [ValidateSet("release", "debug")]
@@ -17,10 +19,8 @@ $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
 $localProps = Join-Path $root "local.properties"
-$mfph = Join-Path $root "app\GKPrep\mfph.properties"
 $gradlew = Join-Path $root "gradlew.bat"
 $copyRoot = Join-Path $root "build\apk"
-$moduleOut = Join-Path $root "app\GKPrep\build\outputs\apk"
 $sendFeishuScript = Join-Path $PSScriptRoot "send_apk_to_feishu.ps1"
 $flutterUpgrader = Join-Path $root "library\LibAiCommon\AiCommon\src\main\java\com\coocaa\aicommon\flutter\FlutterUpgrader.kt"
 
@@ -51,18 +51,29 @@ if (-not (Test-Path $localProps)) {
     throw "Missing local.properties at $localProps"
 }
 
-$appLine = Get-Content $localProps | Where-Object { $_ -match '^\s*app\s*=' } | Select-Object -First 1
-if (-not $appLine -or ($appLine -notmatch '^\s*app\s*=\s*GKPrep\s*$')) {
-    throw "local.properties must contain app=GKPrep"
+$appLine = Get-Content -LiteralPath $localProps | Where-Object { $_ -match '^\s*app\s*=' } | Select-Object -First 1
+if (-not $appLine -or ($appLine -notmatch '^\s*app\s*=\s*(GKPrep|WrapperApp)\s*$')) {
+    throw "local.properties must contain app=GKPrep or app=WrapperApp"
 }
+
+$configuredApp = $Matches[1]
+if ($App -eq "auto") {
+    $App = $configuredApp
+}
+elseif ($App -ne $configuredApp) {
+    throw "Requested app=$App, but local.properties contains app=$configuredApp. Update local.properties or omit -App to use the active app."
+}
+
+$mfph = Join-Path $root "app\$App\mfph.properties"
+$moduleOut = Join-Path $root "app\$App\build\outputs\apk"
 
 if (-not (Test-Path $mfph)) {
     throw "Missing mfph.properties at $mfph"
 }
 
 if ([string]::IsNullOrWhiteSpace($GradleTask)) {
-    $variant = "GKPrepNormal$(Convert-ToPascalCase $Platform)$(Convert-ToPascalCase $BuildType)"
-    $GradleTask = ":GKPrep:assemble$variant"
+    $variant = "$App`Normal$(Convert-ToPascalCase $Platform)$(Convert-ToPascalCase $BuildType)"
+    $GradleTask = ":$App`:assemble$variant"
 }
 else {
     if ($GradleTask -match 'assemble(.+)$') {
@@ -71,13 +82,14 @@ else {
 }
 
 if (-not $variant) {
-    $variant = "GKPrepNormal$(Convert-ToPascalCase $Platform)$(Convert-ToPascalCase $BuildType)"
+    $variant = "$App`Normal$(Convert-ToPascalCase $Platform)$(Convert-ToPascalCase $BuildType)"
 }
 
 $flutterAppVersion = Get-FlutterAppVersion $flutterUpgrader
 
 Write-Host "Preflight:"
-Write-Host ("  local.properties: app=GKPrep")
+Write-Host ("  app: " + $App)
+Write-Host ("  local.properties: app=" + $configuredApp)
 Write-Host ("  mfph.properties: present")
 Write-Host ("  platform: " + $Platform)
 Write-Host ("  buildType: " + $BuildType)
@@ -111,21 +123,28 @@ if (-not $SkipBuild) {
     }
 }
 
-$searchRoots = @()
-if (Test-Path $copyRoot) { $searchRoots += $copyRoot }
-if (Test-Path $moduleOut) { $searchRoots += $moduleOut }
-
-if ($searchRoots.Count -eq 0) {
+$hasCopyRoot = Test-Path $copyRoot
+$hasModuleOut = Test-Path $moduleOut
+if (-not $hasCopyRoot -and -not $hasModuleOut) {
     if ($SkipBuild) {
-        Write-Host "No existing APK output folders found under build/apk or app/GKPrep/build/outputs/apk"
+        Write-Host "No existing APK output folders found under build/apk or app/$App/build/outputs/apk"
         exit 0
     }
-    throw "No APK output folders found under build/apk or app/GKPrep/build/outputs/apk"
+    throw "No APK output folders found under build/apk or app/$App/build/outputs/apk"
 }
 
-$apk = Get-ChildItem -Path $searchRoots -Recurse -Filter "*$variant*.apk" -File |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
+$apk = $null
+if ($hasModuleOut) {
+    $apk = Get-ChildItem -Path $moduleOut -Recurse -Filter "*$variant*.apk" -File |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+}
+
+if (-not $apk -and $hasCopyRoot) {
+    $apk = Get-ChildItem -Path $copyRoot -Recurse -Filter "*$variant*.apk" -File |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+}
 
 if (-not $apk) {
     if ($SkipBuild) {
@@ -145,6 +164,7 @@ if ($SendToFeishu) {
 
     $sendArgs = @(
         "-ApkPath", $apk.FullName,
+        "-AppName", $App,
         "-Variant", $variant,
         "-Mode", $FeishuMode,
         "-FlutterAppVersion", $flutterAppVersion
@@ -164,4 +184,7 @@ if ($SendToFeishu) {
     } catch {
         Write-Warning ("Feishu send failed. APK has been built successfully. " + $_.Exception.Message)
     }
+}
+else {
+    Write-Host "Feishu delivery: skipped. Pass -SendToFeishu to upload the APK and send a group message."
 }

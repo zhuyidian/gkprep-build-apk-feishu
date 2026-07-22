@@ -1,6 +1,7 @@
 ﻿param(
     [Parameter(Mandatory = $true)]
     [string]$ApkPath,
+    [string]$AppName = "",
     [string]$Variant = "",
     [string]$ChatId = "",
     [string]$FolderToken = "",
@@ -204,6 +205,7 @@ Write-Host ("Feishu file: " + $file.Name)
 Write-Host ("Feishu size: " + $sizeMb + " MB")
 
 $flutterAppVersionLine = Get-FlutterAppVersionLine $FlutterAppVersion
+$appLabel = if ([string]::IsNullOrWhiteSpace($AppName)) { "Android" } else { $AppName }
 
 $resolvedMode = $Mode
 if ($resolvedMode -eq "auto") {
@@ -247,7 +249,7 @@ if ($resolvedMode -eq "im-file") {
     }
 
     $message = @(
-        "GKPrep APK build completed",
+        "$appLabel APK build completed",
         "",
         "Variant: $Variant",
         "File: $($file.Name)",
@@ -314,7 +316,7 @@ if ($uploadResp.data.url) {
 }
 
 $messageLines = @(
-    "GKPrep APK build completed",
+    "$appLabel APK build completed",
     "",
     "Variant: $Variant",
     "File: $($file.Name)",

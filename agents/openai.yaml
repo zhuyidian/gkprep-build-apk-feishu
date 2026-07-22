@@ -1,4 +1,4 @@
 interface:
-  display_name: "GKPrep Build APK"
-  short_description: "Build the GKPrep APK from this repo"
-  default_prompt: "Build or package the GKPrep Android APK in this repository."
+  display_name: "GKPrep / WrapperApp Build APK"
+  short_description: "Build an active app APK from this repo"
+  default_prompt: "Build or package the active GKPrep or WrapperApp Android APK in this repository."
